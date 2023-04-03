@@ -1,0 +1,6 @@
+The only solution that worked for me is this: https://github.com/afnhsn/TA-Lib_x64
+
+Download "ta-lib x64.zip" from github above. Extract zip file to C:\, so it looks like this C:\ta-lib
+Download Visual C++ build tools 2022: https://aka.ms/vs/17/release/vs_buildtools.exe
+Install Visual C++ build tools: https://stackoverflow.com/a/54136652/10997732
+Install ta-lib: pip install ta-lib
