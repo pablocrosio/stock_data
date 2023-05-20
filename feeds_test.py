@@ -3,6 +3,17 @@ import pandas as pd
 import backtrader as bt
 import myind
 
+class Logger():
+    def __init__(self, file_name='log.txt'):
+        self.file_name = file_name
+        self.f = open(file_name, 'w')
+
+    def log(self, message):
+        self.f.write(message + '\n')
+
+    def __del__(self):
+        self.f.close()
+
 class AvgInd(bt.Indicator):
     lines = ('avgline',)
 
@@ -56,8 +67,10 @@ class TestStrategy(bt.Strategy):
         #dt = dt or self.datas[0].datetime.date(0)
         dt = dt or self.datas[0].datetime.datetime(0)
         print('%s, %s' % (dt.isoformat(), txt))
+        self.logger.log(dt.isoformat() + ', ' + txt)
 
     def __init__(self):
+        self.logger = Logger()
         self.order = None
         self.entry_type = None
         self.entry_size = None
