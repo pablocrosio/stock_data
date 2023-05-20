@@ -48,22 +48,23 @@ class DummyInd(bt.Indicator):
 
 class TestStrategy(bt.Strategy):
     params = (
-        ('stop_loss', 0.02),
-        ('take_profit', 0.05),
-        ('risk_per_trade', 0.01),
+        ('risk_per_trade', 0.02),
     )
 
     def log(self, txt, dt=None):
         ''' Logging function fot this strategy'''
-        dt = dt or self.datas[0].datetime.date(0)
+        #dt = dt or self.datas[0].datetime.date(0)
+        dt = dt or self.datas[0].datetime.datetime(0)
         print('%s, %s' % (dt.isoformat(), txt))
 
     def __init__(self):
         self.order = None
-        self.buyprice = None
-        self.buycomm = None
+        self.entry_type = None
+        self.entry_size = None
+        self.entry_price = None
+        self.entry_comm = None
         self.stop_order = None
-        self.buysize = None
+        self.profit_order = None
 
         #self.avg = AvgInd(cls_ind1=DummyInd, cls_ind2=DummyInd, ind2_value=8)
         #self.highest = bt.indicators.Highest(period=2)
@@ -79,6 +80,7 @@ class TestStrategy(bt.Strategy):
         #self.lr2 = bt.talib.LINEARREG(self.data.close, timeperiod=2)
         #self.tr = bt.indicators.TR()
         self.atr_sl = myind.ATRStopLoss(self.datas[0], period=14, multiplier=1.5)
+        self.atr_sl2 = myind.ATRStopLoss(self.datas[0], period=14, multiplier=1)
         self.sqz = myind.SqueezeMomentumIndicator()
 
     def notify_order(self, order):
@@ -101,8 +103,13 @@ class TestStrategy(bt.Strategy):
                 self.log(f'cerebro.broker.getcash() = {cerebro.broker.getcash()}')
                 self.log(f'cerebro.broker.getvalue() = {cerebro.broker.getvalue()}')
 
-                self.buyprice = order.executed.price
-                self.buycomm = order.executed.comm
+                if (order.info.name == 'entry buy'):
+                    self.entry_price = order.executed.price
+                    self.entry_comm = order.executed.comm
+                if (order.info.name == 'profit buy 1'):
+                    self.log('STOP BUY 2 CREATE, %.2f' % self.entry_price)
+                    self.stop_order = self.buy(exectype=bt.Order.Stop, price=self.entry_price, size=self.entry_size * 0.5)
+                    self.stop_order.addinfo(name='stop buy 2')
             else:  # Sell
                 self.log('SELL EXECUTED, Price: %.2f, Cost: %.2f, Comm: %.2f, Name: %s' %
                          (order.executed.price,
@@ -112,6 +119,14 @@ class TestStrategy(bt.Strategy):
                 self.log(f'self.position = ' + ('1' if self.position else '0'))
                 self.log(f'cerebro.broker.getcash() = {cerebro.broker.getcash()}')
                 self.log(f'cerebro.broker.getvalue() = {cerebro.broker.getvalue()}')
+
+                if (order.info.name == 'entry sell'):
+                    self.entry_price = order.executed.price
+                    self.entry_comm = order.executed.comm
+                if (order.info.name == 'profit sell 1'):
+                    self.log('STOP SELL 2 CREATE, %.2f' % self.entry_price)
+                    self.stop_order = self.sell(exectype=bt.Order.Stop, price=self.entry_price, size=self.entry_size * 0.5)
+                    self.stop_order.addinfo(name='stop sell 2')
 
         #elif order.status in [order.Canceled, order.Margin, order.Rejected]:
         else:
@@ -128,30 +143,95 @@ class TestStrategy(bt.Strategy):
         self.log('OPERATION PROFIT, GROSS %.2f, NET %.2f' %
                  (trade.pnl, trade.pnlcomm))
 
+        if self.stop_order.info.name.endswith('2'):
+            self.log(f'STOP ORDER INFO, {self.stop_order.info.name}, {self.stop_order.Status[self.stop_order.status]}')
+            if self.stop_order.status in [self.stop_order.Submitted, self.stop_order.Accepted]:
+                self.log(f'CANCEL STOP ORDER AGAIN!, {self.stop_order.info.name}, {self.stop_order.Status[self.stop_order.status]}')
+                self.cancel(self.stop_order)
+
     def next(self):
-        if self.datas[0].datetime.date(0).isoformat() == '2022-03-20':
-            self.log('BUY CREATE, %.2f' % self.datas[0].close[0])
-            stop_price = self.atr_sl.long_stop_loss[0]
-            self.buysize = self.calculate_position_size(stop_price=stop_price)
-            self.log(f'order size = {self.buysize}')
-            #self.order = self.buy(size=self.buysize, transmit=False)
-            self.order = self.buy(size=self.buysize)
-            self.order.addinfo(name='normal buy')
-            # Stop loss order
-            #self.stop_order = self.sell(exectype=bt.Order.Stop, price=self.data.close[0] * (1 - self.params.stop_loss), parent=self.order, size=self.buysize)
-            #self.stop_order = self.sell(exectype=bt.Order.Stop, price=stop_price, parent=self.order, size=self.buysize)
-            #self.stop_order.addinfo(name='stop sell')
-            #self.log(f'stop price = {stop_price}')
-        #if self.datas[0].datetime.date(0).isoformat() == '2022-03-30':
-            #self.cancel(self.stop_order)
-            #self.log('SELL CREATE, %.2f' % self.datas[0].close[0])
-            #self.order = self.sell(size=0.5)
-            #self.order = self.sell(size=self.buysize)
-            #self.order.addinfo(name='normal sell')
-            #self.stop_order = self.sell(exectype=bt.Order.Stop, price=self.buyprice, size=0.5)
-            #self.stop_order.addinfo(name='stop sell')
-        #self.log(len(self))
+        # Simply log the closing price of the series from the reference
         self.log(f'self.datas[0].close[0] = {self.datas[0].close[0]:.2f}')
+
+        # Check if an order is pending ... if yes, we cannot send a 2nd one
+        if self.order:
+            return
+
+        # Check if we are in the market
+        if not self.position:
+
+            # Not yet ... we MIGHT BUY if ...
+            if self.sqz[0] > 0 and self.sqz[0] > self.sqz[-1] and self.sqz[-1] > self.sqz[-2]:
+
+                self.log('ENTRY BUY CREATE, %.2f' % self.datas[0].close[0])
+                self.entry_type = 'buy'
+                stop_price = self.atr_sl.long_stop_loss[0]
+                self.entry_size = self.calculate_position_size(stop_price=stop_price)
+                self.log(f'order size = {self.entry_size}')
+                self.order = self.buy(size=self.entry_size, transmit=False)
+                self.order.addinfo(name='entry buy')
+                # Stop loss order
+                self.stop_order = self.sell(exectype=bt.Order.Stop, price=stop_price, parent=self.order, size=self.entry_size, transmit=False)
+                self.stop_order.addinfo(name='stop sell 1')
+                self.log(f'stop price = {stop_price}')
+                profit_price = self.atr_sl2.short_stop_loss[0]
+                self.log(f'profit price = {profit_price}')
+                self.profit_order = self.sell(exectype=bt.Order.Limit, price=profit_price, parent=self.order, size=self.entry_size * 0.5)
+                self.profit_order.addinfo(name='profit sell 1')
+
+            else:
+                # Not yet ... we MIGHT SELL if ...
+                if self.sqz[0] < 0 and self.sqz[0] < self.sqz[-1] and self.sqz[-1] < self.sqz[-2]:
+
+                    self.log('ENTRY SELL CREATE, %.2f' % self.datas[0].close[0])
+                    self.entry_type = 'sell'
+                    stop_price = self.atr_sl.short_stop_loss[0]
+                    self.entry_size = self.calculate_position_size(stop_price=stop_price)
+                    self.log(f'order size = {self.entry_size}')
+                    self.order = self.sell(size=self.entry_size, transmit=False)
+                    self.order.addinfo(name='entry sell')
+                    # Stop loss order
+                    self.stop_order = self.buy(exectype=bt.Order.Stop, price=stop_price, parent=self.order, size=self.entry_size, transmit=False)
+                    self.stop_order.addinfo(name='stop buy 1')
+                    self.log(f'stop price = {stop_price}')
+                    profit_price = self.atr_sl2.long_stop_loss[0]
+                    self.log(f'profit price = {profit_price}')
+                    self.profit_order = self.buy(exectype=bt.Order.Limit, price=profit_price, parent=self.order, size=self.entry_size * 0.5)
+                    self.profit_order.addinfo(name='profit buy 1')
+
+        else:
+
+            if self.entry_type == 'buy':
+
+                if self.sqz[0] < 0:
+
+                    if self.stop_order.info.name == 'stop sell 1':
+                        self.log(f'***** CASO RARO *****')
+                        size = self.entry_size
+                    else:
+                        size = self.entry_size * 0.5
+                    self.log('EXIT SELL CREATE, %.2f' % self.datas[0].close[0])
+                    self.order = self.sell(size=size)
+                    self.order.addinfo(name='exit sell')
+                    self.log(f'CANCEL STOP ORDER, {self.stop_order.info.name}, {self.stop_order.Status[self.stop_order.status]}')
+                    self.cancel(self.stop_order)
+
+            else:
+
+                if self.sqz[0] > 0:
+
+                    if self.stop_order.info.name == 'stop buy 1':
+                        self.log(f'***** CASO RARO *****')
+                        size = self.entry_size
+                    else:
+                        size = self.entry_size * 0.5
+                    self.log('EXIT BUY CREATE, %.2f' % self.datas[0].close[0])
+                    self.order = self.buy(size=size)
+                    self.order.addinfo(name='exit buy')
+                    self.log(f'CANCEL STOP ORDER, {self.stop_order.info.name}, {self.stop_order.Status[self.stop_order.status]}')
+                    self.cancel(self.stop_order)
+
+        #self.log(len(self))
         #self.log(f'self.sqz[0] = {self.sqz[0]:.2f}')
         #self.log(f'self.avg.ind1.dummyline[0] = {self.avg.ind1.dummyline[0]}')
         #self.log(f'self.avg.ind2.dummyline[0] = {self.avg.ind2.dummyline[0]}')
@@ -171,7 +251,8 @@ class TestStrategy(bt.Strategy):
     def calculate_position_size(self, stop_price):
         leverage = self.broker.getcommissioninfo(self.data).get_leverage()
         #risk_amount = self.broker.get_cash() * leverage * self.params.risk_per_trade
-        risk_amount = 10
+        risk_amount = self.broker.get_cash() * self.params.risk_per_trade
+        #risk_amount = 10
         #risk_amount = self.broker.get_cash() * self.params.risk_per_trade
         #stop_loss_amount = self.params.stop_loss * self.data.close[0]
         stop_loss_amount = abs(self.data.close[0] - stop_price)
@@ -201,14 +282,14 @@ data = bt.feeds.PandasData(dataname=df)
 cerebro.adddata(data)
 
 # Set our desired cash start
-#cerebro.broker.setcash(100000.0)
-cerebro.broker.setcash(1000.0)
+cerebro.broker.setcash(1000)
 
 cerebro.broker.set_shortcash(False)
 
 # Set the commission
 #cerebro.broker.setcommission(commission=0.0, mult=2.0)
-#cerebro.broker.setcommission(leverage=10.0)
+#cerebro.broker.setcommission(commission=0.0001, leverage=10.0)
+cerebro.broker.setcommission(leverage=10.0)
 
 # Print out the starting conditions
 print('Starting Portfolio Cash: %.2f' % cerebro.broker.getcash())

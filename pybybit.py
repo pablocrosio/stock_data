@@ -198,7 +198,8 @@ class Bybit():
 
         resp = None
         try:
-            resp = self.s.send(prepped)
+            #resp = self.s.send(prepped)
+            resp = self.s.send(prepped, verify=False)
             resp.raise_for_status()
         except HTTPError as e:
             print(e)
