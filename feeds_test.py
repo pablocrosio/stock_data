@@ -78,6 +78,7 @@ class TestStrategy(bt.Strategy):
         self.entry_comm = None
         self.stop_order = None
         self.profit_order = None
+        self.set_second_stop_order = None
 
         #self.avg = AvgInd(cls_ind1=DummyInd, cls_ind2=DummyInd, ind2_value=8)
         #self.highest = bt.indicators.Highest(period=2)
@@ -120,9 +121,7 @@ class TestStrategy(bt.Strategy):
                     self.entry_price = order.executed.price
                     self.entry_comm = order.executed.comm
                 if (order.info.name == 'profit buy 1'):
-                    self.log('STOP BUY 2 CREATE, %.2f' % self.entry_price)
-                    self.stop_order = self.buy(exectype=bt.Order.Stop, price=self.entry_price, size=self.entry_size * 0.5)
-                    self.stop_order.addinfo(name='stop buy 2')
+                    self.set_second_stop_order = 1
             else:  # Sell
                 self.log('SELL EXECUTED, Price: %.2f, Cost: %.2f, Comm: %.2f, Name: %s' %
                          (order.executed.price,
@@ -137,9 +136,7 @@ class TestStrategy(bt.Strategy):
                     self.entry_price = order.executed.price
                     self.entry_comm = order.executed.comm
                 if (order.info.name == 'profit sell 1'):
-                    self.log('STOP SELL 2 CREATE, %.2f' % self.entry_price)
-                    self.stop_order = self.sell(exectype=bt.Order.Stop, price=self.entry_price, size=self.entry_size * 0.5)
-                    self.stop_order.addinfo(name='stop sell 2')
+                    self.set_second_stop_order = 1
 
         #elif order.status in [order.Canceled, order.Margin, order.Rejected]:
         else:
@@ -155,12 +152,6 @@ class TestStrategy(bt.Strategy):
 
         self.log('OPERATION PROFIT, GROSS %.2f, NET %.2f' %
                  (trade.pnl, trade.pnlcomm))
-
-        if self.stop_order.info.name.endswith('2'):
-            self.log(f'STOP ORDER INFO, {self.stop_order.info.name}, {self.stop_order.Status[self.stop_order.status]}')
-            if self.stop_order.status in [self.stop_order.Submitted, self.stop_order.Accepted]:
-                self.log(f'CANCEL STOP ORDER AGAIN!, {self.stop_order.info.name}, {self.stop_order.Status[self.stop_order.status]}')
-                self.cancel(self.stop_order)
 
     def next(self):
         # Simply log the closing price of the series from the reference
@@ -191,8 +182,10 @@ class TestStrategy(bt.Strategy):
                 self.log(f'profit price = {profit_price}')
                 self.profit_order = self.sell(exectype=bt.Order.Limit, price=profit_price, parent=self.order, size=self.entry_size * 0.5)
                 self.profit_order.addinfo(name='profit sell 1')
+                self.set_second_stop_order = 0
 
             else:
+
                 # Not yet ... we MIGHT SELL if ...
                 if self.sqz[0] < 0 and self.sqz[0] < self.sqz[-1] and self.sqz[-1] < self.sqz[-2]:
 
@@ -211,6 +204,7 @@ class TestStrategy(bt.Strategy):
                     self.log(f'profit price = {profit_price}')
                     self.profit_order = self.buy(exectype=bt.Order.Limit, price=profit_price, parent=self.order, size=self.entry_size * 0.5)
                     self.profit_order.addinfo(name='profit buy 1')
+                    self.set_second_stop_order = 0
 
         else:
 
@@ -218,7 +212,8 @@ class TestStrategy(bt.Strategy):
 
                 if self.sqz[0] < 0:
 
-                    if self.stop_order.info.name == 'stop sell 1':
+                    #if self.stop_order.info.name == 'stop sell 1':
+                    if self.stop_order.info.name == 'stop sell 1' and not self.set_second_stop_order:
                         self.log(f'***** CASO RARO *****')
                         size = self.entry_size
                     else:
@@ -229,11 +224,21 @@ class TestStrategy(bt.Strategy):
                     self.log(f'CANCEL STOP ORDER, {self.stop_order.info.name}, {self.stop_order.Status[self.stop_order.status]}')
                     self.cancel(self.stop_order)
 
+                else:
+
+                    if self.set_second_stop_order:
+
+                        self.log('STOP SELL 2 CREATE, %.2f' % self.entry_price)
+                        self.stop_order = self.sell(exectype=bt.Order.Stop, price=self.entry_price, size=self.entry_size * 0.5)
+                        self.stop_order.addinfo(name='stop sell 2')
+                        self.set_second_stop_order = 0
+
             else:
 
                 if self.sqz[0] > 0:
 
-                    if self.stop_order.info.name == 'stop buy 1':
+                    #if self.stop_order.info.name == 'stop buy 1':
+                    if self.stop_order.info.name == 'stop buy 1' and not self.set_second_stop_order:
                         self.log(f'***** CASO RARO *****')
                         size = self.entry_size
                     else:
@@ -243,6 +248,15 @@ class TestStrategy(bt.Strategy):
                     self.order.addinfo(name='exit buy')
                     self.log(f'CANCEL STOP ORDER, {self.stop_order.info.name}, {self.stop_order.Status[self.stop_order.status]}')
                     self.cancel(self.stop_order)
+
+                else:
+
+                    if self.set_second_stop_order:
+
+                        self.log('STOP BUY 2 CREATE, %.2f' % self.entry_price)
+                        self.stop_order = self.buy(exectype=bt.Order.Stop, price=self.entry_price, size=self.entry_size * 0.5)
+                        self.stop_order.addinfo(name='stop buy 2')
+                        self.set_second_stop_order = 0
 
         #self.log(len(self))
         #self.log(f'self.sqz[0] = {self.sqz[0]:.2f}')
