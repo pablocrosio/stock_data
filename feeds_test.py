@@ -1,6 +1,7 @@
 from datetime import datetime
 import pandas as pd
 import backtrader as bt
+import backtrader.analyzers as btanalyzers
 import myind
 
 class Logger():
@@ -318,15 +319,19 @@ cerebro.broker.set_shortcash(False)
 #cerebro.broker.setcommission(commission=0.0001, leverage=10.0)
 cerebro.broker.setcommission(leverage=10.0)
 
+cerebro.addanalyzer(btanalyzers.TradeAnalyzer, _name='trade_analyzer')
+
 # Print out the starting conditions
 print('Starting Portfolio Cash: %.2f' % cerebro.broker.getcash())
 print('Starting Portfolio Value: %.2f' % cerebro.broker.getvalue())
 
-cerebro.run()
+results = cerebro.run()
 
 # Print out the final result
 print('Final Portfolio Cash: %.2f' % cerebro.broker.getcash())
 print('Final Portfolio Value: %.2f' % cerebro.broker.getvalue())
+
+#results[0].analyzers[0].print()
 
 #cerebro.plot()
 cerebro.plot(style='candlestick', barup='green', bardown='red')

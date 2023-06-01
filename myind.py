@@ -3,7 +3,8 @@ import backtrader as bt
 class ATRStopLoss(bt.indicators.AverageTrueRange):
     lines = ('short_stop_loss', 'long_stop_loss')
     plotinfo = dict(subplot=False, plotlinelabels=True)
-    plotlines = dict(atr=dict(_plotskip=True), short_stop_loss=dict(marker='.', ls=''), long_stop_loss=dict(marker='.', ls=''))
+    #plotlines = dict(atr=dict(_plotskip=True), short_stop_loss=dict(marker='.', ls=''), long_stop_loss=dict(marker='.', ls=''))
+    plotlines = dict(atr=dict(_plotskip=True))
 
     params = (('multiplier', 1.4),)
 
@@ -95,3 +96,10 @@ class SqueezeMomentumIndicator(bt.Indicator):
             self.lines.sqz_on[0] = 0.0
             self.lines.sqz_off[0] = 0.0
             self.lines.no_sqz[0] = 1.0
+
+class RSIWithSMA(bt.indicators.RSI): # RSI with SMA applied to the RSI calculation
+    lines = ('sma',)
+
+    def __init__(self):
+        super(RSIWithSMA, self).__init__()
+        self.lines.sma = bt.indicators.SMA(self.lines.rsi, period=self.params.period)

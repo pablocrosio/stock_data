@@ -18,10 +18,11 @@ header = 0
 
 #dataframe = get_historical_data('BTCUSD', start_date='2019-01-01', end_date='2019-12-31 23:59:59', interval=240)
 #dataframe = get_historical_data('BTCUSD', start_date='2020-01-01', end_date='2020-12-31 23:59:59', interval=240)
+dataframe = get_historical_data('BTCUSD', start_date='2020-07-01', end_date='2021-06-30 23:59:59', interval=240)
 #dataframe = get_historical_data('BTCUSD', start_date='2021-01-01', end_date='2021-12-31 23:59:59', interval=240)
 #dataframe = get_historical_data('BTCUSD', start_date='2022-01-01', end_date='2022-12-31')
 #dataframe = get_historical_data('BTCUSD', start_date='2022-01-01', end_date='2022-12-31 23:59:59', interval=240)
-dataframe = get_historical_data('BTCUSD', start_date='2023-01-01', interval=240)
+#dataframe = get_historical_data('BTCUSD', start_date='2023-01-01', interval=240)
 
 print(dataframe)
 
